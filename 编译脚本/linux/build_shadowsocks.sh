@@ -16,7 +16,7 @@ DIST="$BASE/dist"
 # libev
 LIBEV_VER=4.24
 LIBEV_NAME=libev-${LIBEV_VER}
-LIBEV_URL=http://dist.schmorp.de/libev/${LIBEV_NAME}.tar.gz
+LIBEV_URL=https://fossies.org/linux/misc/legacy/${LIBEV_NAME}.tar.gz
 
 ## mbedTLS
 MBEDTLS_VER=2.9.0
@@ -39,9 +39,19 @@ CARES_NAME=c-ares-${CARES_VER}
 CARES_URL=https://c-ares.haxx.se/download/${CARES_NAME}.tar.gz
 
 #shadowsocks-libev
-SHADOWSOCKS_VER=3.2.0
+OBFS_VER=0.0.5
+OBFS_NAME=simple-obfs-${OBFS_VER}
+OBFS_URL=https://github.com/shadowsocks/simple-obfs/archive/v${OBFS_VER}.tar.gz
+
+#simple-obfs
+SHADOWSOCKS_VER=3.2.3
 SHADOWSOCKS_NAME=shadowsocks-libev-${SHADOWSOCKS_VER}
 SHADOWSOCKS_URL=https://github.com/shadowsocks/shadowsocks-libev/releases/download/v${SHADOWSOCKS_VER}/${SHADOWSOCKS_NAME}.tar.gz
+
+#shadowsocksr-libev
+SHADOWSOCKSR_VER=2.5.6
+SHADOWSOCKSR_NAME=shadowsocksr-libev-${SHADOWSOCKSR_VER}
+SHADOWSOCKSR_URL=https://up.linkown.com/src/${SHADOWSOCKSR_NAME}.tar.gz
 
 # 工具
 # upx
@@ -62,7 +72,8 @@ apt-get install --no-install-recommends -y build-essential gcc-aarch64-linux-gnu
 # 下载源码
 cd "${SRC}"
 DOWN="aria2c --file-allocation=trunc -s10 -x10 -j10 -c"
-for pkg in LIBEV SODIUM MBEDTLS PCRE CARES SHADOWSOCKS
+#for pkg in OBFS
+for pkg in LIBEV SODIUM MBEDTLS PCRE CARES SHADOWSOCKS OBFS SHADOWSOCKSR 
 do
     name=${pkg}_NAME
     url=${pkg}_URL
@@ -113,7 +124,8 @@ build_deps() {
 }
 
 dk_deps() {
-    for arch in x86_64 aarch64
+    #for arch in x86_64 aarch64
+    for arch in x86_64
     do
         build_deps $arch
     done
@@ -122,10 +134,10 @@ dk_deps() {
 dk_deps
 
 
-build_proj() {
+build_ss() {
     arch=$1
     host=$arch-linux-gnu
-    prefix=${DIST}/$arch
+    prefix=${DIST}/$arch/ss
     dep=${PREFIX}/$arch 
 
     cd "$SRC/$SHADOWSOCKS_NAME"
@@ -144,10 +156,59 @@ build_proj() {
     make install-strip
 }
 
+build_obfs() {
+    arch=$1
+    host=$arch-linux-gnu
+    prefix=${DIST}/$arch/ss
+    dep=${PREFIX}/$arch 
+
+    cd "$SRC/$OBFS_NAME"
+    rmdir libcork && ln -s "$SRC/$SHADOWSOCKS_NAME"/libcork .
+    ./autogen.sh
+    ./configure LIBS="-lpthread -lm" \
+        LDFLAGS="-Wl,-static -static -static-libgcc -L$dep/lib" \
+        CFLAGS="-I$dep/include" \
+        --host=${host} \
+        --prefix=${prefix} \
+        --disable-ssp \
+        --disable-documentation \
+        --with-mbedtls="$dep" \
+        --with-pcre="$dep" \
+        --with-sodium="$dep" \
+        --with-cares="$dep"
+    make clean
+    make install-strip
+}
+
+build_ssr() {
+    arch=$1
+    host=$arch-linux-gnu
+    prefix=${DIST}/$arch/ssr
+    dep=${PREFIX}/$arch 
+
+    cd "$SRC/$SHADOWSOCKSR_NAME"
+    ./configure LIBS="-lpthread -lm" \
+        LDFLAGS="-Wl,-static -static -static-libgcc -L$dep/lib" \
+        CFLAGS="-I$dep/include" \
+        --host=${host} \
+        --prefix=${prefix} \
+        --disable-ssp \
+        --disable-documentation \
+        --with-mbedtls="$dep" \
+        --with-pcre="$dep" \
+        --with-sodium="$dep" \
+        --with-cares="$dep"
+    make clean
+    make install-strip
+}
+
 dk_build() {
-    for arch in x86_64 aarch64
+    #for arch in x86_64 aarch64
+    for arch in x86_64
     do
-        build_proj $arch
+        build_ss $arch
+        build_obfs $arch
+        build_ssr $arch
     done
 }
 
@@ -157,19 +218,25 @@ dk_build
 rm -rf "$BASE/pack"
 mkdir -p "$BASE/pack"
 cd "$BASE/pack"
-mkdir -p shadowsocks-libev
-cd shadowsocks-libev
-mkdir -p aarch64
-mkdir -p x86_64
+mkdir -p ss
+mkdir -p ssr
+#cd shadowsocks-libev
+#mkdir -p aarch64
+mkdir -p ss/x86_64
+mkdir -p ssr/x86_64
 
-for bin in local server tunnel
-do
-    cp ${DIST}/aarch64/bin/ss-${bin} aarch64
-    cp ${DIST}/x86_64/bin/ss-${bin} x86_64
-    upx aarch64/ss-${bin}
-    upx x86_64/ss-${bin}
-done
+#for bin in local server tunnel
+#do
+   # cp ${DIST}/aarch64/bin/ss-${bin} aarch64
+    cp ${DIST}/x86_64/ss/bin/* ss/x86_64
+    cp ${DIST}/x86_64/ssr/bin/* ssr/x86_64
+    #upx aarch64/ss-${bin}
+    upx ss/x86_64/*
+    upx ssr/x86_64/*
+#done
 
 cd "$BASE/pack"
-tar -Jcf bin.tar.xz shadowsocks-libev
-echo -e "${RED}${BASE}/pack/bin.tar.gz 打包完毕${NC}"
+tar -Jcf ${SHADOWSOCKS_NAME}.tar.xz ss
+tar -Jcf ${SHADOWSOCKSR_NAME}.tar.xz ssr
+echo -e "${RED}${BASE}/pack/${SHADOWSOCKS_NAME}.tar.xz 打包完毕${NC}"
+echo -e "${RED}${BASE}/pack/${SHADOWSOCKSR_NAME}.tar.xz 打包完毕${NC}"
